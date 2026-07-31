@@ -1,0 +1,38 @@
+# Automatically normalize line endings to LF for text files
+* text=auto
+
+# Explicitly mark common text files
+*.js text
+*.ts text
+*.tsx text
+*.jsx text
+*.json text
+*.md text
+*.html text
+*.css text
+*.scss text
+
+# Zig source files
+*.zig text
+
+# Build configuration files
+build.zig text
+build.zig.zon text
+
+# Ensure shell scripts use LF
+*.sh text eol=lf
+
+# Mark binary files
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.svg binary
+*.ico binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.eot binary
+
+# Compiled WASM files
+*.wasm binary

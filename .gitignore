@@ -1,0 +1,11 @@
+# Node.js
+node_modules/
+npm-debug.log*
+
+# Zig build artifacts
+.zig-cache/
+.zig-out/
+
+# Misc
+doc1.txt
+doc2.md
