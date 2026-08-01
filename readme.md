@@ -8,7 +8,7 @@ So here is how it goes: I wanted to make some cool redstone installations in my 
 
 ## Technology Stack
 
-I use Zig for the backend and Three.js for the frontend. Why Zig? To tell you the truth, I didn't know Zig well, but I just wanted to learn it. As it is said, the best way to learn a language is to use it. Zig is a language which has a lot of features attracting me. — It has drawbacks, though. For example, you have to face versions that are not backward compatible. I use 0.16.0.
+I use Zig for the backend and Three.js for the frontend. And, the WebAssembly compiled from Zig. Why Zig? To tell you the truth, I didn't know Zig well, but I just wanted to learn it. As it is said, the best way to learn a language is to use it. Zig has many features that appeal to me. I once doubted whether this young language supported WebAssembly. Surprisingly it does! — It has drawbacks, though. For example, you have to handle lack of backward compatibility. I use 0.16.0.
 
 ## Why is it here?
 

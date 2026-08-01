@@ -211,13 +211,16 @@ async function main() {
                 const { x, y, z } = result.hitBlock;
                 const state = wasm.getBlockState(x, y, z);
                 const typeId = (state >> 24) & 0xFF;
-                const signal = (state >> 16) & 0xFF;
+                const signal = (state >> 20) & 0xF;
+                const connections = (state >> 16) & 0xF;
+                const connectionsBinary = (connections >>> 0).toString(2).padStart(4, '0');
                 const blockType = BLOCK_TYPES.find(t => t.id === typeId);
 
                 infoBox.innerHTML = `
                     <div>Coords: (${x}, ${y}, ${z})</div>
                     <div>Type: ${blockType?.name ?? 'Unknown'} (ID: ${typeId})</div>
                     <div>Signal: ${signal}</div>
+                    <div>Connections: ${connectionsBinary}</div>
                 `;
 
                 infoBox.style.left = (e.clientX + 15) + 'px';

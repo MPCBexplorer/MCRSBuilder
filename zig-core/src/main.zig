@@ -10,7 +10,14 @@ pub const Powered = enum(u8) {
     strong = 2,
 };
 
-pub const BlockState = struct { type: u8, signal: u8, powered: Powered, delay: u8 };
+pub const BlockState = packed struct {
+    type: u8, // bits 0-7
+    signal: u4, // bits 8-11 (0-15)
+    connections: u4, // bits 12-15 (E/S/W/N)
+    powered: u2, // bits 16-17
+    delay: u8, // bits 18-25
+    _reserved: u6, // bits 26-31
+};
 
 // ================== Global State ==================
 var allocator: std.mem.Allocator = undefined;
@@ -45,6 +52,70 @@ pub fn addDelayedTask(x: i32, y: i32, z: i32, delay_ticks: u8) void {
     delayed_queue.append(ba, .{ .coord = .{ .x = x, .y = y, .z = z }, .execute_tick = current_tick + @as(u64, delay_ticks) }) catch {};
 }
 
+// Connectable block types (for redstone dust connections)
+var connectable_blocks: [1]u8 = .{2}; // Redstone dust
+
+pub fn isConnectableBlock(block_type: u8) bool {
+    for (connectable_blocks) |bt| {
+        if (bt == block_type) return true;
+    }
+    return false;
+}
+
+// Check if a neighbor block can provide signal to redstone dust
+// TODO: Implement full powering logic (strong power, weak power, etc.)
+pub fn canProvideSignal(nb: BlockState) bool {
+    return nb.type == 2 and nb.signal > 0; // Redstone dust with signal
+}
+
+pub fn updateConnections(x: i32, y: i32, z: i32) void {
+    const block = getBlock(x, y, z) orelse return;
+    if (block.type != 2) return; // Only redstone dust
+
+    var connections: u4 = 0;
+
+    const directions = [_]Coord{
+        .{ .x = 1, .y = 0, .z = 0 }, // East
+        .{ .x = 0, .y = 0, .z = 1 }, // South
+        .{ .x = -1, .y = 0, .z = 0 }, // West
+        .{ .x = 0, .y = 0, .z = -1 }, // North
+    };
+
+    for (directions, 0..) |dir, idx| {
+        const di: u2 = @intCast(idx);
+
+        // Check same level
+        if (getBlock(x + dir.x, y, z + dir.z)) |nb| {
+            if (isConnectableBlock(nb.type)) {
+                connections |= @as(u4, 1) << di;
+                continue;
+            }
+        }
+
+        // Check y+1 level
+        if (getBlock(x + dir.x, y + 1, z + dir.z)) |nb| {
+            if (isConnectableBlock(nb.type)) {
+                connections |= @as(u4, 1) << di;
+                continue;
+            }
+        }
+
+        // Check y-1 level
+        if (getBlock(x + dir.x, y - 1, z + dir.z)) |nb| {
+            if (isConnectableBlock(nb.type)) {
+                connections |= @as(u4, 1) << di;
+                continue;
+            }
+        }
+    }
+
+    if (connections != block.connections) {
+        var new_block = block;
+        new_block.connections = connections;
+        updateBlock(x, y, z, new_block);
+    }
+}
+
 // ================== WASM Exported Functions ==================
 export fn initWorld(width: i32, height: i32, depth: i32) void {
     _ = width;
@@ -70,17 +141,39 @@ export fn placeBlock(x: i32, y: i32, z: i32, blockId: u8) void {
         .{
             .type = blockId,
             .signal = 0,
-            .powered = .none,
+            .connections = 0,
+            .powered = 0, // .none = 0
             .delay = 0,
+            ._reserved = 0,
         },
     ) catch unreachable;
 
-    addTask(x, y, z); // Add to update queue immediately after placement
+    addTask(x, y, z);
+    updateConnections(x, y, z);
+
+    // Also update connections of neighbors at multiple heights
+    const neighbor_offsets = [_]Coord{
+        .{ .x = x + 1, .y = y, .z = z },
+        .{ .x = x - 1, .y = y, .z = z },
+        .{ .x = x, .y = y, .z = z + 1 },
+        .{ .x = x, .y = y, .z = z - 1 },
+        .{ .x = x + 1, .y = y + 1, .z = z },
+        .{ .x = x - 1, .y = y + 1, .z = z },
+        .{ .x = x, .y = y + 1, .z = z + 1 },
+        .{ .x = x, .y = y + 1, .z = z - 1 },
+        .{ .x = x + 1, .y = y - 1, .z = z },
+        .{ .x = x - 1, .y = y - 1, .z = z },
+        .{ .x = x, .y = y - 1, .z = z + 1 },
+        .{ .x = x, .y = y - 1, .z = z - 1 },
+    };
+    for (neighbor_offsets) |offset| {
+        updateConnections(offset.x, offset.y, offset.z);
+    }
 }
 
 export fn setBlockSignal(x: i32, y: i32, z: i32, signal: u8) void {
     if (world_blocks.getPtr(.{ .x = x, .y = y, .z = z })) |block| {
-        block.signal = signal;
+        block.signal = @as(u4, @intCast(signal));
         addTask(x, y, z); // Signal change triggers update
     }
 }
@@ -129,7 +222,7 @@ export fn tick() void {
 
         const block = getBlock(coord.x, coord.y, coord.z) orelse continue;
 
-        if (block.type == 1) {
+        if (block.type == 2) {
             redstone_wire.update(coord.x, coord.y, coord.z);
         }
     }
@@ -138,16 +231,17 @@ export fn tick() void {
 export fn getBlockState(x: i32, y: i32, z: i32) u32 {
     const res = getBlock(x, y, z) orelse return 0;
 
-    const poweredBit: u32 = switch (res.powered) {
+    const poweredBit: u32 = switch (@as(Powered, @enumFromInt(res.powered))) {
         .none => 0,
         .weak => 1,
         .strong => 2,
     };
 
     return (@as(u32, res.type) << 24) |
-        (@as(u32, res.signal) << 16) |
-        (poweredBit << 8) |
-        @as(u32, res.delay);
+        (@as(u32, res.signal) << 20) |
+        (@as(u32, res.connections) << 16) |
+        (poweredBit << 14) |
+        (@as(u32, res.delay) << 6);
 }
 
 export fn _start() void {
