@@ -151,7 +151,7 @@ export fn placeBlock(x: i32, y: i32, z: i32, blockId: u8) void {
     addTask(x, y, z);
     updateConnections(x, y, z);
 
-    // Also update connections of neighbors at multiple heights
+    // Also update connections of neighbors at multiple heights (first-order neighbors)
     const neighbor_offsets = [_]Coord{
         .{ .x = x + 1, .y = y, .z = z },
         .{ .x = x - 1, .y = y, .z = z },
@@ -168,6 +168,51 @@ export fn placeBlock(x: i32, y: i32, z: i32, blockId: u8) void {
     };
     for (neighbor_offsets) |offset| {
         updateConnections(offset.x, offset.y, offset.z);
+    }
+
+    // Trigger second-order redstone signal update
+    // (Find redstone dust that is 2 blocks away from the placed block)
+    updateSecondOrderRedstone(x, y, z);
+}
+
+// Update second-order neighbor redstone signal
+// TODO: Implement actual signal propagation logic
+pub fn updateSecondOrderRedstone(x: i32, y: i32, z: i32) void {
+    // Find all second-order neighbors (distance = 2 in Manhattan distance along axes)
+    // These are redstone dust blocks that might need signal recalculation
+    const second_order_offsets = [_]Coord{
+        // Same axis, distance 2
+        .{ .x = x + 2, .y = y, .z = z },
+        .{ .x = x - 2, .y = y, .z = z },
+        .{ .x = x, .y = y, .z = z + 2 },
+        .{ .x = x, .y = y, .z = z - 2 },
+        // Same axis, distance 2 with y offset
+        .{ .x = x + 2, .y = y + 1, .z = z },
+        .{ .x = x - 2, .y = y + 1, .z = z },
+        .{ .x = x + 2, .y = y - 1, .z = z },
+        .{ .x = x - 2, .y = y - 1, .z = z },
+        .{ .x = x, .y = y + 1, .z = z + 2 },
+        .{ .x = x, .y = y + 1, .z = z - 2 },
+        .{ .x = x, .y = y - 1, .z = z + 2 },
+        .{ .x = x, .y = y - 1, .z = z - 2 },
+        // Diagonal (diagonal distance)
+        .{ .x = x + 1, .y = y, .z = z + 1 },
+        .{ .x = x + 1, .y = y, .z = z - 1 },
+        .{ .x = x - 1, .y = y, .z = z + 1 },
+        .{ .x = x - 1, .y = y, .z = z - 1 },
+        .{ .x = x + 1, .y = y + 1, .z = z + 1 },
+        .{ .x = x + 1, .y = y + 1, .z = z - 1 },
+        .{ .x = x + 1, .y = y - 1, .z = z + 1 },
+        .{ .x = x + 1, .y = y - 1, .z = z - 1 },
+        .{ .x = x - 1, .y = y + 1, .z = z + 1 },
+        .{ .x = x - 1, .y = y + 1, .z = z - 1 },
+        .{ .x = x - 1, .y = y - 1, .z = z + 1 },
+        .{ .x = x - 1, .y = y - 1, .z = z - 1 },
+    };
+
+    for (second_order_offsets) |offset| {
+        // TODO: Implement signal recalculation for second-order redstone
+        _ = getBlock(offset.x, offset.y, offset.z); // Placeholder
     }
 }
 
