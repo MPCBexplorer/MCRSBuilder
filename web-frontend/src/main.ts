@@ -177,6 +177,9 @@ async function main() {
     // Redstone dust power state cache
     const redstonePowers = new Map<string, number>();
 
+    // Redstone dust connections cache
+    const redstoneConnections = new Map<string, number>();
+
     let isPointerDown = false;
     let pointerButton = -1;
     let pointerDownX = 0;
@@ -262,10 +265,12 @@ async function main() {
                         wasm.removeBlock(x, y + 1, z);
                         localBlockData.delete(`${x},${y + 1},${z}`);
                         redstonePowers.delete(`${x},${y + 1},${z}`);
+                        redstoneConnections.delete(`${x},${y + 1},${z}`);
                     }
                     wasm.removeBlock(x, y, z);
                     localBlockData.delete(`${x},${y},${z}`);
                     redstonePowers.delete(`${x},${y},${z}`);
+                    redstoneConnections.delete(`${x},${y},${z}`);
                     syncWorldToScene();
                 }
                 break;
@@ -278,10 +283,28 @@ async function main() {
     });
 
     function syncWorldToScene() {
-        // Wasm does not provide a method to iterate all blocks, frontend maintains a local Map
-        // Sync update on each place/delete
-        // Update from local blockData
-        sceneManager.updateBlocks(localBlockData, redstonePowers);
+        
+        // Clear old redstone connections and rebuild from wasm
+        redstoneConnections.clear();
+        
+        // Update redstone connections from wasm
+        for (const [key, blockId] of localBlockData) {
+            if (blockId !== 2) continue; // Only process redstone dust
+            
+            const [x, y, z] = key.split(',').map(Number);
+            const state = wasm.getBlockState(x, y, z);
+            const typeId = (state >> 24) & 0xFF;
+            
+            if (typeId === 2) {
+                const connections = (state >> 16) & 0xF;
+                redstoneConnections.set(key, connections);
+                //console.log(`[Sync] Redstone at ${key}: typeId=${typeId}, connections=${connections} (${connections.toString(2).padStart(4, '0')})`);
+            }
+        }
+        
+
+        sceneManager.updateBlocks(localBlockData, redstonePowers, redstoneConnections);
+        console.log('[Sync] Scene updated');
     }
 
     // Create info box
@@ -313,18 +336,30 @@ async function main() {
     // Place some test blocks
     wasm.placeBlock(0, 0, 0, 2);
     localBlockData.set('0,0,0', 2);
-    redstonePowers.set('0,0,0', 10); // Example: power level 10
-    wasm.setBlockSignal(0, 0, 0, 10); // Example: set signal strength to 10
+    redstonePowers.set('0,0,0', 10);
+    wasm.setBlockSignal(0, 0, 0, 10);
 
     wasm.placeBlock(1, 0, 0, 2);
     localBlockData.set('1,0,0', 2);
-    redstonePowers.set('1,0,0', 15); // Example: power level 15
-    wasm.setBlockSignal(1, 0, 0, 15); // Example: set signal strength to 15
-
-
+    redstonePowers.set('1,0,0', 15);
+    wasm.setBlockSignal(1, 0, 0, 15);
 
     wasm.placeBlock(0, 0, 1, 3);
     localBlockData.set('0,0,1', 3);
+
+    // Initialize connections for test redstone dust
+    for (const [key] of localBlockData) {
+        const [x, y, z] = key.split(',').map(Number);
+        const state = wasm.getBlockState(x, y, z);
+        const typeId = (state >> 24) & 0xFF;
+        if (typeId === 2) {
+            const connections = (state >> 16) & 0xF;
+            redstoneConnections.set(key, connections);
+        }
+    }
+    
+    // Wait for redstone textures to be loaded before rendering
+    await sceneManager.waitForRedstoneTextures();
     syncWorldToScene();
 
     console.log('Frontend initialization complete!');
@@ -335,6 +370,7 @@ async function main() {
     (window as any).localBlockData = localBlockData;
     (window as any).syncWorldToScene = syncWorldToScene;
     (window as any).redstonePowers = redstonePowers;
+    (window as any).redstoneConnections = redstoneConnections;
 }
 
 main().catch(console.error);
