@@ -33,6 +33,16 @@ export class SceneManager {
     private redstoneTextureCache: Map<string, THREE.CanvasTexture> = new Map(); // "connections-power" -> texture
     private redstoneTexturesLoaded = false;
 
+    // Incremental update: track redstone block states
+    private redstoneStates: Map<string, {
+        connections: number;
+        power: number;
+        mesh: THREE.Mesh;
+    }> = new Map();
+
+    // Shared geometry for all redstone meshes (avoids creating duplicates)
+    private redstoneGeometry: THREE.PlaneGeometry | null = null;
+
     constructor(container: HTMLElement) {
         // Scene
         this.scene = new THREE.Scene();
@@ -385,41 +395,54 @@ export class SceneManager {
             mesh.count = 0;
         }
 
-        // Clear redstone meshes
-        while (this.redstoneMeshes.children.length > 0) {
-            const child = this.redstoneMeshes.children[0];
-            this.redstoneMeshes.remove(child);
-            if (child instanceof THREE.Mesh) {
-                child.geometry.dispose();
-                (child.material as THREE.Material).dispose();
-            }
+        // Initialize shared geometry for redstone
+        if (!this.redstoneGeometry) {
+            this.redstoneGeometry = new THREE.PlaneGeometry(BLOCK_SIZE, BLOCK_SIZE);
         }
+
+        // Track current redstone keys to detect deletions
+        const currentRedstoneKeys = new Set<string>();
 
         // Re-populate instances
         for (const [key, blockId] of blocks) {
             const [x, y, z] = key.split(',').map(Number);
 
-            // Handle redstone dust separately - use individual meshes
+            // Handle redstone dust with incremental updates
             if (blockId === 2) {
+                currentRedstoneKeys.add(key);
                 const connections = redstoneConnections?.get(key) ?? 0;
                 const power = redstonePowers.get(key) ?? 0;
 
-                const geometry = new THREE.PlaneGeometry(BLOCK_SIZE, BLOCK_SIZE);
-                const texture = this.getRedstoneTexture(connections, power);
-                const material = new THREE.MeshStandardMaterial({
-                    map: texture,
-                    transparent: true,
-                    alphaTest: 0.1,
-                    side: THREE.DoubleSide,
-                    roughness: 0.5,
-                    metalness: 0.0,
-                });
+                const prevState = this.redstoneStates.get(key);
 
-                const mesh = new THREE.Mesh(geometry, material);
-                mesh.position.set(x, y - BLOCK_SIZE / 2 + 0.01, z);
-                mesh.rotation.x = -Math.PI / 2;
+                if (!prevState) {
+                    // New redstone block: create mesh
+                    this.createRedstoneMesh(key, connections, power, x, y, z);
+                } else {
+                    // Existing block: check if state changed
+                    const changed = prevState.connections !== connections || prevState.power !== power;
+                    const positionChanged = prevState.mesh.position.x !== x ||
+                                           prevState.mesh.position.y !== (y - BLOCK_SIZE / 2 + 0.01) ||
+                                           prevState.mesh.position.z !== z;
 
-                this.redstoneMeshes.add(mesh);
+                    if (changed) {
+                        // Update texture
+                        const newTexture = this.getRedstoneTexture(connections, power);
+                        const mat = prevState.mesh.material as THREE.MeshStandardMaterial;
+                        if (mat.map !== newTexture) {
+                            mat.map = newTexture;
+                            mat.needsUpdate = true;
+                        }
+                        // Update tracked state
+                        prevState.connections = connections;
+                        prevState.power = power;
+                    }
+
+                    if (positionChanged) {
+                        // Update position
+                        prevState.mesh.position.set(x, y - BLOCK_SIZE / 2 + 0.01, z);
+                    }
+                }
                 continue;
             }
 
@@ -436,6 +459,16 @@ export class SceneManager {
             mesh.count = idx + 1;
         }
 
+        // Remove deleted redstone blocks
+        for (const [key, state] of this.redstoneStates) {
+            if (!currentRedstoneKeys.has(key)) {
+                this.redstoneMeshes.remove(state.mesh);
+                // Note: do NOT dispose geometry since it's shared
+                (state.mesh.material as THREE.Material).dispose();
+                this.redstoneStates.delete(key);
+            }
+        }
+
         // Update instanceMatrix for all InstanceMeshes
         for (const [, mesh] of this.meshes) {
             mesh.instanceMatrix.needsUpdate = true;
@@ -448,6 +481,27 @@ export class SceneManager {
     }
 
 
+    /** Create a redstone mesh and add to tracked state */
+    private createRedstoneMesh(key: string, connections: number, power: number,
+        x: number, y: number, z: number): void {
+        const texture = this.getRedstoneTexture(connections, power);
+        const material = new THREE.MeshStandardMaterial({
+            map: texture,
+            transparent: true,
+            alphaTest: 0.1,
+            side: THREE.DoubleSide,
+            roughness: 0.5,
+            metalness: 0.0,
+        });
+
+        const mesh = new THREE.Mesh(this.redstoneGeometry!, material);
+        mesh.position.set(x, y - BLOCK_SIZE / 2 + 0.01, z);
+        mesh.rotation.x = -Math.PI / 2;
+
+        this.redstoneMeshes.add(mesh);
+        this.redstoneStates.set(key, { connections, power, mesh });
+    }
+
     /** Get block coordinates at mouse position */
     getBlockAtPointer(clientX: number, clientY: number): {
         hitBlock: { x: number; y: number; z: number; blockId: number };  // The clicked block
@@ -459,64 +513,53 @@ export class SceneManager {
 
         this.raycaster.setFromCamera(this.pointer, this.camera);
 
-        // First, try to detect InstancedMeshes
-        const meshes: THREE.InstancedMesh[] = [];
+        // Collect all detectable objects: InstancedMeshes + Redstone meshes
+        const allObjects: (THREE.InstancedMesh | THREE.Mesh)[] = [];
+
+        // Add InstancedMeshes with count > 0
         for (const [, mesh] of this.meshes) {
-            if (mesh.count > 0) meshes.push(mesh);
+            if (mesh.count > 0) allObjects.push(mesh);
         }
 
-        let intersects = this.raycaster.intersectObjects(meshes, false);
+        // Add redstone meshes
+        this.redstoneMeshes.traverse((child) => {
+            if (child instanceof THREE.Mesh) allObjects.push(child);
+        });
 
-        // If no hit on InstancedMeshes, try redstone meshes
-        if (intersects.length === 0) {
-            const redstoneChildren: THREE.Object3D[] = [];
-            this.redstoneMeshes.traverse((child) => {
-                if (child instanceof THREE.Mesh) redstoneChildren.push(child);
-            });
-            intersects = this.raycaster.intersectObjects(redstoneChildren, false);
+        // Detect all objects and sort by distance
+        let intersects = this.raycaster.intersectObjects(allObjects, true);
+        intersects.sort((a, b) => a.distance - b.distance);
 
-            if (intersects.length > 0) {
-                const hit = intersects[0];
-                const mesh = hit.object as THREE.Mesh;
-                // Calculate block position from mesh position
-                const pos = mesh.position;
-                const hitY = Math.floor(pos.y - 0.5 + BLOCK_SIZE / 32);
-                const hitX = Math.floor(pos.x);
-                const hitZ = Math.floor(pos.z);
-                const hitKey = `${hitX},${hitY},${hitZ}`;
-                const hitBlockId = this.blockData.get(hitKey) ?? 2;
-
-                // For redstone dust, normal is usually up/down
-                const normal = hit.face?.normal;
-                let placeX = hitX;
-                let placeY = hitY;
-                let placeZ = hitZ;
-
-                if (normal) {
-                    if (normal.y > 0.5) placeY += 1;
-                    else if (normal.y < -0.5) placeY -= 1;
-                } else {
-                    // Default: place on top
-                    placeY += 1;
-                }
-
-                const placeKey = `${placeX},${placeY},${placeZ}`;
-                const placeBlockId = this.blockData.get(placeKey) ?? 0;
-
-                return {
-                    hitBlock: { x: hitX, y: hitY, z: hitZ, blockId: hitBlockId },
-                    placeBlock: { x: placeX, y: placeY, z: placeZ, blockId: placeBlockId },
-                };
-            }
-            return null;
-        }
+        if (intersects.length === 0) return null;
 
         const hit = intersects[0];
+
+        // Handle redstone mesh hit
+        if (hit.object instanceof THREE.Mesh && !(hit.object instanceof THREE.InstancedMesh)) {
+            const mesh = hit.object as THREE.Mesh;
+            const pos = mesh.position;
+            // pos.y = y - 0.49, so pos.y + 0.5 ≈ y + 0.01, floor gives y
+            const hitY = Math.floor(pos.y + BLOCK_SIZE / 2);
+            const hitX = Math.floor(pos.x);
+            const hitZ = Math.floor(pos.z);
+            const hitKey = `${hitX},${hitY},${hitZ}`;
+            const hitBlockId = this.blockData.get(hitKey) ?? 2;
+
+            // Redstone is flat, place block on top
+            const placeKey = `${hitX},${hitY + 1},${hitZ}`;
+            const placeBlockId = this.blockData.get(placeKey) ?? 0;
+
+            return {
+                hitBlock: { x: hitX, y: hitY, z: hitZ, blockId: hitBlockId },
+                placeBlock: { x: hitX, y: hitY + 1, z: hitZ, blockId: placeBlockId },
+            };
+        }
+
+        // Handle InstancedMesh hit
         const point = hit.point;
         const normal = hit.face?.normal;
         if (!normal) return null;
 
-        // Coordinates of the clicked block (round hit point)
         const epsilon = 0.001;
         const offsetX = normal.x > 0 ? 0.5 - epsilon : 0.5 + epsilon;
         const offsetY = normal.y > 0 ? 0.5 - epsilon : 0.5 + epsilon;
@@ -527,17 +570,36 @@ export class SceneManager {
         const hitKey = `${hitX},${hitY},${hitZ}`;
         const hitBlockId = this.blockData.get(hitKey) ?? 0;
 
-        // Coordinates of adjacent placement position (offset along normal)
+        // Special case: check if the hit position itself has redstone dust
+        if (hitBlockId === 2) {
+            return {
+                hitBlock: { x: hitX, y: hitY, z: hitZ, blockId: 2 },
+                placeBlock: { x: hitX, y: hitY + 1, z: hitZ, blockId: 0 },
+            };
+        }
+
+        // Special case: if hitting top surface, check for redstone dust above
+        if (normal.y > 0.5) {
+            const redstoneKey = `${hitX},${hitY + 1},${hitZ}`;
+            const redstoneBlockId = this.blockData.get(redstoneKey);
+            if (redstoneBlockId === 2) {
+                return {
+                    hitBlock: { x: hitX, y: hitY + 1, z: hitZ, blockId: 2 },
+                    placeBlock: { x: hitX, y: hitY + 2, z: hitZ, blockId: 0 },
+                };
+            }
+        }
+
         let placeX = hitX;
         let placeY = hitY;
         let placeZ = hitZ;
 
-        if (normal.x > 0.5) placeX += 1;        // Normal facing +X → place on the right
-        else if (normal.x < -0.5) placeX -= 1;  // Normal facing -X → place on the left
-        if (normal.y > 0.5) placeY += 1;        // Normal facing +Y → place on top
-        else if (normal.y < -0.5) placeY -= 1;  // Normal facing -Y → place on bottom
-        if (normal.z > 0.5) placeZ += 1;        // Normal facing +Z → place in front
-        else if (normal.z < -0.5) placeZ -= 1;  // Normal facing -Z → place in back
+        if (normal.x > 0.5) placeX += 1;
+        else if (normal.x < -0.5) placeX -= 1;
+        if (normal.y > 0.5) placeY += 1;
+        else if (normal.y < -0.5) placeY -= 1;
+        if (normal.z > 0.5) placeZ += 1;
+        else if (normal.z < -0.5) placeZ -= 1;
 
         const placeKey = `${placeX},${placeY},${placeZ}`;
         const placeBlockId = this.blockData.get(placeKey) ?? 0;
