@@ -1,0 +1,115 @@
+name: "🐛 Bug Report"
+description: "Submit a bug report to help us improve the simulator 🤔"
+title: "[🐛Bug]: "
+labels: ["bug", "needs-triage"]
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for taking the time to report a bug! Please fill out the form below with as much detail as possible.
+
+  - type: checkboxes
+    id: confirmation
+    attributes:
+      label: ✅ Confirmation Checklist
+      options:
+        - label: I have searched the existing issues to ensure this bug has not been reported before
+          required: true
+        - label: I have tried using the latest version and the bug still exists
+          required: true
+        - label: I have provided complete reproduction steps and related environment information
+          required: true
+        - label: I use Zig 0.16.0
+          required: true
+        - label: I have included necessary logs and screenshots (if applicable)
+          required: false
+
+  - type: textarea
+    id: description
+    attributes:
+      label: 📋 Description
+      description: Please provide a clear and concise description of the bug
+      placeholder: Describe the issue in detail, including when it occurs and how it affects the simulator
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction_steps
+    attributes:
+      label: 🔍 Reproduction Steps
+      description: Please provide detailed steps to reproduce the issue
+      placeholder: |
+        1. 
+        2. 
+        3.
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual_behavior
+    attributes:
+      label: ❌ Actual Behavior
+      description: Please describe what actually happened
+      placeholder: Describe the actual behavior that occurred
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected_behavior
+    attributes:
+      label: ✅ Expected Behavior
+      description: Please describe what you expected to happen
+      placeholder: Describe the behavior you expected to occur
+    validations:
+      required: true
+
+  - type: input
+    id: browser
+    attributes:
+      label: Browser
+      description: Which browser are you using?
+      placeholder: e.g. Chrome 120, Firefox 121, Safari 17
+    validations:
+      required: true
+  - type: input
+    id: frontend_packages_version
+    attributes:
+      label: Frontend Packages Version
+      description: Which version of frontend packages are you using?
+      placeholder: Three.js version, Tailwind CSS version, etc.
+    validations:
+      required: true
+
+  - type: textarea
+    id: possible_solution
+    attributes:
+      label: 🛠️ Possible Solution (Optional)
+      description: If you have suggestions for fixing this bug, please provide them here
+      placeholder: Provide possible solutions or workarounds
+    validations:
+      required: false
+
+  - type: textarea
+    id: related_links
+    attributes:
+      label: 🔗 Related Links (Optional)
+      description: If there are any related issues, PRs, or other resources, please provide them here
+      placeholder: Provide links to related resources
+    validations:
+      required: false
+  - type: textarea
+    id: additional_info
+    attributes:
+      label: 📁 Additional Information
+      description: Please provide any other relevant information
+    validations:
+      required: false
+
+  - type: upload
+    id: screenshots
+    attributes:
+      label: Upload relevant files
+      description: "Drag and drop any relevant files."
+    validations:
+      required: false

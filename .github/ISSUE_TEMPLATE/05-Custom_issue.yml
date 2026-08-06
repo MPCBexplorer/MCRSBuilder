@@ -1,0 +1,76 @@
+name: "📝 Custom Issue"
+description: "Submit an issue that doesn't fit into other categories 🤔"
+title: "[📝your_issue_type]: "
+labels: ["needs-triage"]
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for submitting an issue! Please fill out the form below with as much detail as possible.
+
+  - type: checkboxes
+    id: confirmation
+    attributes:
+      label: ✅ Confirmation Checklist
+      options:
+        - label: I have searched the existing issues to ensure this has not been reported before
+          required: true
+        - label: I have considered if this issue fits better in one of the other templates
+          required: true
+        - label: I have provided a clear and concise description of the issue
+          required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: 📋 Description
+      description: Please provide a detailed description of the issue
+      placeholder: Describe your issue in detail
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction_steps
+    attributes:
+      label: 🔍 Steps to Reproduce (if applicable)
+      description: If this is a bug or issue that can be reproduced, please provide steps
+      placeholder: |
+        1.
+        2.
+        3.
+    validations:
+      required: false
+
+  - type: input
+    id: browser
+    attributes:
+      label: 🖥️ Browser (if applicable)
+      description: Which browser are you using?
+      placeholder: e.g. Chrome 120, Firefox 121, Safari 17
+    validations:
+      required: false
+  - type: input
+    id: mcrsbuilder_version
+    attributes:
+      label: 🖥️ MCRSBuilder Version (if applicable)
+      description: Which version of MCRSBuilder are you using?
+      placeholder: e.g. commit hash, branch name
+    validations:
+      required: false
+
+  - type: textarea
+    id: additional_info
+    attributes:
+      label: 📁 Additional Information
+      description: Please provide any other relevant information
+    validations:
+      required: false
+  
+  - type: upload
+    id: screenshots
+    attributes:
+      label: Upload relevant files
+      description: "Drag and drop any relevant files."
+    validations:
+      required: false 

@@ -1,0 +1,121 @@
+name: "📚 Documentation Issue"
+description: "Report or request documentation improvements 📝"
+title: "[📚Doc]: "
+labels: ["documentation", "needs-triage"]
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for helping improve our documentation! Please fill out the form below with as much detail as possible.
+
+  - type: checkboxes
+    id: confirmation
+    attributes:
+      label: ✅ Confirmation Checklist
+      options:
+        - label: I have searched the existing issues to ensure this documentation issue has not been reported before
+          required: true
+        - label: I have checked the current documentation to understand the existing content
+          required: true
+        - label: I have identified the specific documentation that needs to be updated or created
+          required: true
+        - label: I have considered the impact of this documentation change
+          required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: 📋 Description
+      description: Please provide a clear and concise description of the documentation issue or request
+      placeholder: Describe the documentation problem or improvement in detail
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: documentation_type
+    attributes:
+      label: 🎯 Documentation Type (At least one)
+      description: Please select the type of documentation issue
+      options:
+        - label: Documentation update (existing content needs revision)
+        - label: Documentation creation (new content needs to be written)
+        - label: Documentation error (incorrect information needs to be fixed)
+        - label: Documentation missing (information is completely absent)
+        - label: Documentation structure (organization or navigation needs improvement)
+        - label: Example or tutorial (code examples or tutorials need improvement)
+        - label: Translation or localization (translation of documentation)
+  - type: dropdown
+    id: affected_docs
+    attributes:
+      label: 🔍 Affected Documentation
+      description: Please specify which documentation is affected. If have multiple affected documents, please submit mutiple issues
+      options:
+        - README.md, CONTRIBUTING.md, etc.
+        - Code comments
+        - API documentation
+        - Wiki or external documentation
+        - Other
+      default: 3
+    validations:
+      required: true
+  - type: input
+    id: other_docs
+    attributes:
+      label: Other Documentation
+      description: If you selected "Other" above, please specify
+      placeholder: Specify other documentation
+    validations:
+      required: false
+
+  - type: input
+    id: current_docs_link
+    attributes:
+      label: 📚 Current Documentation
+      description: Please provide a link to the current documentation (if applicable)
+      placeholder: Paste links to the current documentation
+    validations:
+      required: false
+
+  - type: textarea
+    id: proposed_changes
+    attributes:
+      label: ✏️ Proposed Changes
+      description: Please describe the changes you would like to see in the documentation
+      placeholder: Provide details on what should be updated, added, or fixed
+    validations:
+      required: true
+
+  - type: textarea
+    id: examples_references
+    attributes:
+      label: 🖼️ Examples or References (Optional)
+      description: If you have any examples or references that could help improve the documentation, please provide them
+      placeholder: Include links to similar documentation in other projects or examples of good documentation
+    validations:
+      required: false
+
+  - type: textarea
+    id: related_links
+    attributes:
+      label: 🔗 Related Links (Optional)
+      description: If there are any related issues, PRs, or other resources, please provide them
+      placeholder: Provide links to related resources
+    validations:
+      required: false
+  
+  - type: textarea
+    id: additional_info
+    attributes:
+      label: 📁 Additional Information
+      description: Please provide any other relevant information
+    validations:
+      required: false
+  
+  - type: upload
+    id: screenshots
+    attributes:
+      label: Upload relevant files
+      description: "Drag and drop any relevant files."
+    validations:
+      required: false 

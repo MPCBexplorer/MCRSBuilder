@@ -1,0 +1,112 @@
+name: "🎈 Code Refactoring"
+description: "Request or report code refactoring and cleanup tasks 🎨"
+title: "[🎈Refactor]: "
+labels: ["refactoring", "needs-triage"]
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for suggesting code refactoring! Please fill out the form below with as much detail as possible.
+
+  - type: checkboxes
+    id: confirmation
+    attributes:
+      label: ✅ Confirmation Checklist
+      options:
+        - label: I have searched the existing issues to ensure this refactoring task has not been reported before
+          required: true
+        - label: I have identified the specific code that needs to be refactored
+          required: true
+        - label: I have tested the current code to understand its behavior
+          required: false
+
+  - type: textarea
+    id: description
+    attributes:
+      label: 📋 Description
+      description: Please provide a clear and concise description of the refactoring task, and which files or modules are affected by this refactoring
+      placeholder: Describe what needs to be refactored and why
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: refactoring_type
+    attributes:
+      label: 🔧 Refactoring Type
+      description: Please select the type of refactoring needed
+      options:
+        - label: Code cleanup (remove unused code, fix formatting)
+        - label: Performance optimization (improve speed or memory usage)
+        - label: Code style (follow project style guidelines)
+        - label: Architecture improvement (better code organization)
+        - label: API design (improve public interfaces)
+        - label: Zig core refactoring (`zig-core/`)
+        - label: Frontend refactoring (`web-frontend/`)
+        - label: WASM interface improvements
+        - label: Test coverage (improve testability)
+        - label: Documentation (add or update code comments)
+
+  - type: textarea
+    id: current_state
+    attributes:
+      label: 📊 Current State
+      description: Please describe the current state of the code
+      placeholder: Explain the current implementation and its issues
+    validations:
+      required: true
+
+  - type: textarea
+    id: implementation_details
+    attributes:
+      label: 🔍 Implementation Details (Optional)
+      description: If you have specific implementation ideas for this refactoring, please share them
+      placeholder: Include code snippets, patterns, or approaches to consider
+    validations:
+      required: false
+
+  - type: textarea
+    id: testing_considerations
+    attributes:
+      label: 🧪 Testing Considerations (Optional)
+      description: Please describe any testing considerations for this refactoring
+      placeholder: Explain how to test the refactored code and ensure functionality is preserved
+    validations:
+      required: false
+
+  - type: dropdown
+    id: impact_assessment
+    attributes:
+      label: 📈 Impact Assessment
+      description: Please assess the potential impact of this refactoring
+      options:
+        - "Low impact (localized changes, minimal risk)"
+        - "Medium impact (affects multiple components, moderate risk)"
+        - "High impact (significant architectural changes, high risk)"
+    validations:
+      required: true
+
+  - type: textarea
+    id: related_links
+    attributes:
+      label: 🔗 Related Links (Optional)
+      description: If there are any related issues, PRs, or other resources, please provide them
+      placeholder: Provide links to related resources
+    validations:
+      required: false
+
+  - type: textarea
+    id: additional_info
+    attributes:
+      label: 📁 Additional Information
+      description: Please provide any other relevant information
+    validations:
+      required: false
+
+  - type: upload
+    id: screenshots
+    attributes:
+      label: Upload relevant files
+      description: "Drag and drop any relevant files."
+    validations:
+      required: false

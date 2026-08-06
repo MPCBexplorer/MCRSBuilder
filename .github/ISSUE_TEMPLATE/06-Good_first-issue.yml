@@ -1,0 +1,58 @@
+name: "Good first issue/Help Wanted"
+description: "This issue can be only submitted by the repo's maintainers."
+title: "[Good first issue/Help Wanted]: "
+labels: ["good-first-issue", "help-wanted"]
+
+body:
+  - type: dropdown
+    attributes:
+      label: "Issue Type"
+      options:
+        - "Good first issue"
+        - "Help Wanted"
+        - "Good first issue & Help Wanted"
+      default: 2
+    validations:
+      required: true
+  - type: markdown
+    attributes:
+      value: |
+        This issue was submitted by the repo's maintainers. He sincerely invites you to help him improve the project.        
+        `"good-first-issue"` : 
+        It is a good opportunity for new contributors to get started and learn how to contribute to the project.
+        `"help-wanted"` :
+        We need experts in the field to help us improve the project.
+
+  - type: textarea
+    id: "description"
+    attributes:
+      label: "Task Description"
+    validations:
+        required: true
+
+  - type: checkboxes
+    id: "requirements"
+    attributes:
+      label: "Requirements"
+      description: "Requirements needed in the task:"
+      options:
+        - label: Need Zig programming knowledge (Zig backend)
+        - label: Need TS programming knowledge (frontend)
+        - label: Need Three.js programming knowledge (frontend)
+        - label: Need art design knowledge (no code is ok)
+        - label: No need to learn all the project
+        - label: Need to learn all the project
+  - type: textarea
+    id: "additional-info"
+    attributes:
+      label: "Additional Information"
+    validations:
+        required: false
+
+  - type: upload
+    id: screenshots
+    attributes:
+      label: Upload relevant files
+      description: "Drag and drop any relevant files."
+    validations:
+      required: false 
