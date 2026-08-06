@@ -1,0 +1,83 @@
+name: Pull Request
+description: Create a pull request to propose changes to this project
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for contributing to this project! Please fill out the form below to help us review your changes.
+
+  - type: textarea
+    id: description
+    attributes:
+      label: 📋 Description
+      description: Please provide a general summary of your changes
+      placeholder: Describe your changes in detail
+    validations:
+      required: true
+
+  - type: textarea
+    id: motivation
+    attributes:
+      label: 🎯 Motivation and Context
+      description: Why is this change required? What problem does it solve?
+      placeholder: |
+        **Issue Reference:** (REQUIRED) Link to the related issue (e.g., Closes #123)
+    validations:
+      required: true
+
+  - type: textarea
+    id: testing
+    attributes:
+      label: 🧪 How has this been tested? (Optional)
+      description: Please describe in detail how you tested your changes
+      placeholder: |
+        Include details of your testing environment, tests ran to see how your change affects other areas of the code, etc.
+    validations:
+      required: false
+
+
+  - type: checkboxes
+    id: types_of_changes
+    attributes:
+      label: 🔄 Types of changes
+      description: What types of changes does your code introduce?
+      options:
+        - label: Bug fix 
+        - label: New feature 
+        - label: Breaking change (fix or feature that would cause existing functionality to not work as expected)
+        - label: Documentation update
+        - label: Code refactoring
+        - label: Performance improvement
+        - label: Zig core changes (`zig-core/`)
+        - label: Frontend changes (`web-frontend/`)
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: ✅ Checklist
+      options:
+        - label: "**I have linked this PR to a related issue**"
+          required: true
+        - label: My change requires a change to the documentation
+        - label: I have updated the documentation accordingly
+        - label: I have added tests to cover my changes (if applicable)
+        - label: All new and existing tests passed
+        - label: I have considered the potential impact on existing features
+        - label: I have tested the WASM compilation and frontend integration (if Zig changes)
+        - label: I have tested the changes in a modern browser
+
+  - type: textarea
+    id: additional_info
+    attributes:
+      label: 📁 Additional Information
+      description: Please provide any other relevant information
+    validations:
+      required: false
+  
+  - type: upload
+    id: screenshots
+    attributes:
+      label: Upload relevant files
+      description: "Drag and drop any relevant files."
+    validations:
+      required: false 
