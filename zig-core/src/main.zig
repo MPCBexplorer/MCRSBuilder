@@ -26,7 +26,7 @@ var is_initialized: bool = false;
 var current_tick: u64 = 0;
 
 // Queue type definitions
-const ba = std.heap.brk_allocator;
+const wa = std.heap.wasm_allocator;
 const CoordArrayList = std.ArrayList(Coord);
 const DelayedTask = struct { coord: Coord, execute_tick: u64 };
 const DelayedArrayList = std.ArrayList(DelayedTask);
@@ -87,11 +87,11 @@ pub fn updateBlock(x: i32, y: i32, z: i32, new_state: BlockState) void {
 }
 
 pub fn addTask(x: i32, y: i32, z: i32) void {
-    immediate_queue.append(ba, .{ .x = x, .y = y, .z = z }) catch {};
+    immediate_queue.append(wa, .{ .x = x, .y = y, .z = z }) catch {};
 }
 
 pub fn addDelayedTask(x: i32, y: i32, z: i32, delay_ticks: u8) void {
-    delayed_queue.append(ba, .{ .coord = .{ .x = x, .y = y, .z = z }, .execute_tick = current_tick + @as(u64, delay_ticks) }) catch {};
+    delayed_queue.append(wa, .{ .coord = .{ .x = x, .y = y, .z = z }, .execute_tick = current_tick + @as(u64, delay_ticks) }) catch {};
 }
 
 // Connectable block types (for redstone dust connections)
@@ -285,5 +285,5 @@ export fn getBlockState(x: i32, y: i32, z: i32) u32 {
 }
 
 export fn _start() void {
-    allocator = std.heap.page_allocator;
+    allocator = std.heap.wasm_allocator;
 }
