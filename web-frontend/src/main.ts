@@ -44,21 +44,28 @@ async function main() {
     for (const blockType of BLOCK_TYPES) {
         if (blockType.id === 0) continue;
         const btn = document.createElement('button');
+        //TODO: background color -> Minecraft gray texture
+        const bgColor = blockType.texture ? '#888888' : `#${blockType.color.toString(16).padStart(6, '0')}`;
+        const bgImage = blockType.texture ? `url(${blockType.texture})` : 'none';
         btn.style.cssText = `
             width: 40px;
             height: 40px;
             border: 2px solid ${blockType.id === currentBlockId ? '#fff' : 'transparent'};
             border-radius: 4px;
             cursor: pointer;
-            background-color: #${blockType.color.toString(16).padStart(6, '0')};
+            background-color: ${bgColor};
+            background-image: ${bgImage};
+            background-size: cover;
+            background-position: center;
+            image-rendering: pixelated;
+            image-rendering: -moz-crisp-edges;
         `;
         btn.title = blockType.name;
         btn.addEventListener('pointerdown', (e) => {
-            e.stopPropagation();  // Prevent pointerdown bubbling
+            e.stopPropagation();
         });
         btn.addEventListener('click', () => {
             currentBlockId = blockType.id;
-            // Update button border
             toolbar.querySelectorAll('button').forEach((b) => {
                 b.style.borderColor = 'transparent';
             });

@@ -3,10 +3,10 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
 export const BLOCK_SIZE = 1;
-export const BLOCK_TYPES = [
+export const BLOCK_TYPES: { id: number; name: string; color: number; texture?: string }[] = [
     { id: 0, name: 'Air', color: 0x000000 },
-    { id: 1, name: 'Stone', color: 0x888888 },
-    { id: 2, name: 'Redstone Dust', color: 0xff0000 },
+    { id: 1, name: 'Stone', color: 0x888888, texture: '/textures/smooth_stone.png' },
+    { id: 2, name: 'Redstone Dust', color: 0xff0000, texture: '/textures/redstone.png' },
     { id: 3, name: 'Redstone Torch', color: 0xff6600 },
     { id: 4, name: 'Repeater', color: 0xcccc00 },
     { id: 5, name: 'Comparator', color: 0x99ccff },
