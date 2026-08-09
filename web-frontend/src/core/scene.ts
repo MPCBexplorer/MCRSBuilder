@@ -134,6 +134,7 @@ export class SceneManager {
         // Load stone texture
         loader.load('/textures/smooth_stone.png', (texture) => {
             texture.anisotropy = this.renderer.capabilities.getMaxAnisotropy();
+            texture.magFilter = THREE.NearestFilter;
             this.textures.set(1, texture);
             if (this.meshes.has(1)) {
                 const mesh = this.meshes.get(1)!;
@@ -143,7 +144,7 @@ export class SceneManager {
         });
 
         // Load redstone base textures (as HTMLImageElement for Canvas operations)
-        await this.loadImage();
+        await this.loadRedstoneImage();
         this.redstoneTexturesLoaded = true;
     }
 
@@ -164,7 +165,7 @@ export class SceneManager {
         });
     }
 
-    private loadImage() {
+    private loadRedstoneImage() {
         return new Promise<void>((resolve, reject) => {
             let loaded = 0;
             const total = 2;
@@ -281,7 +282,7 @@ export class SceneManager {
         const tCtx = temp.getContext('2d')!;
         tCtx.drawImage(this.redstoneDotTexture!, 0, 0);
 
-        const count = this.tintImage(tCtx, r, g, b);
+        this.tintImage(tCtx, r, g, b);
         ctx.drawImage(temp, 0, 0);
         //console.log(`[Redstone]   Center dot: ${count} pixels`);
         return true;
