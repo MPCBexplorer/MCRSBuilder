@@ -154,6 +154,8 @@ pub fn updateConnections(x: i32, y: i32, z: i32) void {
     if (connections != block.connections) {
         var new_block = block;
         new_block.connections = connections;
+        // Update here
+        // in scene.ts:updateBlocks() the data was read from wasm
         updateBlock(x, y, z, new_block);
     }
 }
@@ -196,19 +198,24 @@ export fn setBlockSignal(x: i32, y: i32, z: i32, signal: u8) void {
     }
 }
 export fn placeBlock(x: i32, y: i32, z: i32, blockId: u8) void {
+    var value = BlockState{
+        .type = blockId,
+        .signal = 0,
+        .connections = 0,
+        .powered = 0, // .none = 0
+        .delay = 0,
+        ._reserved = 0,
+    };
+    if (blockId == 7) {
+        value.signal = 15;
+    }
     world_blocks.put(
         .{ .x = x, .y = y, .z = z },
-        .{
-            .type = blockId,
-            .signal = 0,
-            .connections = 0,
-            .powered = 0, // .none = 0
-            .delay = 0,
-            ._reserved = 0,
-        },
+        value,
     ) catch unreachable;
 
     addTask(x, y, z);
+    //FIXME: Here has confliction with tick() logic
     if (blockId == 2) {
         updateConnections(x, y, z);
 

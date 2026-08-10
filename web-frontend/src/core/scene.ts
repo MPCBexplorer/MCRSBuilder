@@ -11,6 +11,7 @@ export const BLOCK_TYPES: { id: number; name: string; color: number; texture?: s
     { id: 4, name: 'Repeater', color: 0xcccc00 },
     { id: 5, name: 'Comparator', color: 0x99ccff },
     { id: 6, name: 'Redstone Lamp', color: 0xff3333 },
+    { id: 7, name: 'Redstone Block', color: 0xff0000, texture: '/textures/redstone_block.png' }
 ];
 
 export class SceneManager {
@@ -142,7 +143,17 @@ export class SceneManager {
                 (mesh.material as THREE.MeshStandardMaterial).needsUpdate = true;
             }
         });
-
+        // Load redstone block texture
+        loader.load('/textures/redstone_block.png', (texture) => {
+            texture.anisotropy = this.renderer.capabilities.getMaxAnisotropy();
+            texture.magFilter = THREE.NearestFilter;
+            this.textures.set(7, texture);
+            if (this.meshes.has(7)) {
+                const mesh = this.meshes.get(7)!;
+                (mesh.material as THREE.MeshStandardMaterial).map = texture;
+                (mesh.material as THREE.MeshStandardMaterial).needsUpdate = true;
+            }
+        });
         // Load redstone base textures (as HTMLImageElement for Canvas operations)
         await this.loadRedstoneImage();
         this.redstoneTexturesLoaded = true;
@@ -210,7 +221,6 @@ export class SceneManager {
                 roughness: 0.7,
                 metalness: 0.1,
             });
-
             const mesh = new THREE.InstancedMesh(geometry, material, maxCount);
             mesh.count = 0;
             mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
@@ -423,8 +433,8 @@ export class SceneManager {
                     // Existing block: check if state changed
                     const changed = prevState.connections !== connections || prevState.power !== power;
                     const positionChanged = prevState.mesh.position.x !== x ||
-                                           prevState.mesh.position.y !== (y - BLOCK_SIZE / 2 + 0.01) ||
-                                           prevState.mesh.position.z !== z;
+                        prevState.mesh.position.y !== (y - BLOCK_SIZE / 2 + 0.01) ||
+                        prevState.mesh.position.z !== z;
 
                     if (changed) {
                         // Update texture
