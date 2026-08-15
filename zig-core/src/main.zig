@@ -107,7 +107,12 @@ pub fn isConnectableBlock(block_type: u8) bool {
 // Check if a neighbor block can provide signal to redstone dust
 // TODO: Implement full powering logic (strong power, weak power, etc.)
 pub fn canProvideSignal(nb: BlockState) bool {
-    return nb.type == 2 and nb.signal > 0; // Redstone dust with signal
+    switch (nb.type) {
+        2 => return nb.signal > 0, // Redstone Dust
+        3, 7 => return true,       // Redstone Torch & Redstone Block
+        4, 5 => return nb.signal > 0, // Repeater & Comparator
+        else => return false,
+    }
 }
 
 pub fn updateConnections(x: i32, y: i32, z: i32) void {
