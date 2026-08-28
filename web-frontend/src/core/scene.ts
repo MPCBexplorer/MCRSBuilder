@@ -1,13 +1,15 @@
 // scene.ts
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { RedstoneDustRenderer } from './redstonedust';
+import { RedstoneTorchRenderer } from './redstonetorch';
 
 export const BLOCK_SIZE = 1;
 export const BLOCK_TYPES: { id: number; name: string; color: number; texture?: string }[] = [
     { id: 0, name: 'Air', color: 0x000000 },
     { id: 1, name: 'Stone', color: 0x888888, texture: '/textures/smooth_stone.png' },
     { id: 2, name: 'Redstone Dust', color: 0xff0000, texture: '/textures/redstone.png' },
-    { id: 3, name: 'Redstone Torch', color: 0xff6600 },
+    { id: 3, name: 'Redstone Torch', color: 0x000000, texture: '/textures/redstone_torch.png' },
     { id: 4, name: 'Repeater', color: 0xcccc00 },
     { id: 5, name: 'Comparator', color: 0x99ccff },
     { id: 6, name: 'Redstone Lamp', color: 0xff3333 },
@@ -24,15 +26,14 @@ export class SceneManager {
     private meshes: Map<number, THREE.InstancedMesh> = new Map();
     private blockData: Map<string, number> = new Map(); // "x,y,z" -> blockId
     private redstoneMeshes: THREE.Group = new THREE.Group(); // Redstone dust uses individual meshes
+    private torchMeshes: THREE.Group = new THREE.Group(); // Redstone torch uses individual meshes
     private dummy = new THREE.Object3D();
     private tempMatrix = new THREE.Matrix4();
     private textures: Map<number, THREE.Texture> = new Map(); // blockId -> texture
 
-    // Redstone texture components (base textures as masks)
-    private redstoneLineTexture: HTMLImageElement | null = null;
-    private redstoneDotTexture: HTMLImageElement | null = null;
-    private redstoneTextureCache: Map<string, THREE.CanvasTexture> = new Map(); // "connections-power" -> texture
-    private redstoneTexturesLoaded = false;
+    // Renderers for specialized components
+    private redstoneRenderer = new RedstoneDustRenderer();
+    private torchRenderer = new RedstoneTorchRenderer();
 
     // Incremental update: track redstone block states
     private redstoneStates: Map<string, {
@@ -41,8 +42,12 @@ export class SceneManager {
         mesh: THREE.Mesh;
     }> = new Map();
 
-    // Shared geometry for all redstone meshes (avoids creating duplicates)
-    private redstoneGeometry: THREE.PlaneGeometry | null = null;
+    // Track torch states for incremental updates
+    private torchStates: Map<string, {
+        connections: number;
+        signal: number;
+        meshes: THREE.Object3D[];  // Multiple objects for upright/wall variants (Group or Mesh)
+    }> = new Map();
 
     constructor(container: HTMLElement) {
         // Scene
@@ -109,6 +114,7 @@ export class SceneManager {
 
         // Add redstone group to scene
         this.scene.add(this.redstoneMeshes);
+        this.scene.add(this.torchMeshes);
 
         // Initialize meshes first (before textures are loaded)
         this.initMeshes();
@@ -154,19 +160,22 @@ export class SceneManager {
                 (mesh.material as THREE.MeshStandardMaterial).needsUpdate = true;
             }
         });
+
+        // Load torch textures
+        this.torchRenderer.loadTextures(this.renderer);
+
         // Load redstone base textures (as HTMLImageElement for Canvas operations)
-        await this.loadRedstoneImage();
-        this.redstoneTexturesLoaded = true;
+        await this.redstoneRenderer.loadTextures();
     }
 
     /** Wait for redstone textures to be loaded */
     public async waitForRedstoneTextures(): Promise<void> {
-        if (this.redstoneTexturesLoaded) {
+        if (this.redstoneRenderer.isLoaded) {
             return;
         }
         await new Promise<void>((resolve) => {
             const checkLoaded = () => {
-                if (this.redstoneTexturesLoaded) {
+                if (this.redstoneRenderer.isLoaded) {
                     resolve();
                 } else {
                     setTimeout(checkLoaded, 50);
@@ -176,50 +185,18 @@ export class SceneManager {
         });
     }
 
-    private loadRedstoneImage() {
-        return new Promise<void>((resolve, reject) => {
-            let loaded = 0;
-            const total = 2;
-
-            this.redstoneLineTexture = new Image();
-            this.redstoneLineTexture.crossOrigin = 'anonymous';
-            this.redstoneLineTexture.onload = () => {
-                //console.log('[Redstone] Line texture loaded, size:', this.redstoneLineTexture!.naturalWidth, 'x', this.redstoneLineTexture!.naturalHeight);
-                loaded++;
-                if (loaded === total) resolve();
-            };
-            this.redstoneLineTexture.onerror = (e) => {
-                console.error('[Redstone] Failed to load line texture:', e);
-                reject(new Error('Failed to load redstone line texture'));
-            };
-            this.redstoneLineTexture.src = '/textures/redstone_dust_line0.png';
-
-            this.redstoneDotTexture = new Image();
-            this.redstoneDotTexture.crossOrigin = 'anonymous';
-            this.redstoneDotTexture.onload = () => {
-                console.log('[Redstone] Dot texture loaded, size:', this.redstoneDotTexture!.naturalWidth, 'x', this.redstoneDotTexture!.naturalHeight);
-                loaded++;
-                if (loaded === total) resolve();
-            };
-            this.redstoneDotTexture.onerror = (e) => {
-                console.error('[Redstone] Failed to load dot texture:', e);
-                reject(new Error('Failed to load redstone dot texture'));
-            };
-            this.redstoneDotTexture.src = '/textures/redstone_dust_dot.png';
-        });
-    }
-
+    /** Initialize meshes for non-redstone blocks */
     private initMeshes() {
         const maxCount = 10000;
-
         for (const blockType of BLOCK_TYPES) {
-            if (blockType.id === 0 || blockType.id === 2) continue; // Skip air and redstone dust
+            if (blockType.id === 0 || blockType.id === 2 || blockType.id === 3) continue;
 
             const geometry = new THREE.BoxGeometry(BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE);
             const material = new THREE.MeshStandardMaterial({
                 color: blockType.color,
                 roughness: 0.7,
                 metalness: 0.1,
+                map: this.textures.get(blockType.id),
             });
             const mesh = new THREE.InstancedMesh(geometry, material, maxCount);
             mesh.count = 0;
@@ -228,172 +205,6 @@ export class SceneManager {
             this.scene.add(mesh);
             this.meshes.set(blockType.id, mesh);
         }
-    }
-
-    /** Tint an image: color all non-transparent pixels */
-    private tintImage(ctx: CanvasRenderingContext2D, r: number, g: number, b: number): number {
-        const imgData = ctx.getImageData(0, 0, 16, 16);
-        const d = imgData.data;
-        let count = 0;
-        for (let i = 0; i < d.length; i += 4) {
-            if (d[i + 3] > 0) {
-                d[i] = r;
-                d[i + 1] = g;
-                d[i + 2] = b;
-                count++;
-            }
-        }
-        ctx.putImageData(imgData, 0, 0);
-        return count;
-    }
-
-    /** Draw a line segment for a specific direction */
-    private drawLineSegment(ctx: CanvasRenderingContext2D, direction: 'east' | 'south' | 'west' | 'north',
-        r: number, g: number, b: number): void {
-        const temp = document.createElement('canvas');
-        temp.width = 16;
-        temp.height = 16;
-        const tCtx = temp.getContext('2d')!;
-
-        let rotation = 0;
-        if (direction === 'east' || direction === 'west') { rotation = -Math.PI / 2; }  // Counter-clockwise 90°
-
-        // Rotate around center of canvas
-        tCtx.translate(8, 8);
-        tCtx.rotate(rotation);
-        tCtx.translate(-8, -8);
-        // Draw the full texture first
-        tCtx.drawImage(this.redstoneLineTexture!, 0, 0);
-
-
-        // Now clip to keep only half (from center to edge)
-        // Notice: according to the rotated axis
-        if ((direction === 'east') || (direction === 'south')) {
-            tCtx.clearRect(0, 0, 16, 8);
-        } else if ((direction === 'west') || (direction === 'north')) {
-            tCtx.clearRect(0, 8, 16, 8);
-        }
-        // Tint: color all non-transparent pixels
-        this.tintImage(tCtx, r, g, b);
-        ctx.drawImage(temp, 0, 0);
-    }
-
-    /** Draw center dot */
-    private drawCenterDot(ctx: CanvasRenderingContext2D, r: number, g: number, b: number): boolean {
-        if (!this.redstoneDotTexture ||
-            !this.redstoneDotTexture.complete ||
-            this.redstoneDotTexture.naturalWidth === 0) {
-            return false;
-        }
-
-        const temp = document.createElement('canvas');
-        temp.width = 16;
-        temp.height = 16;
-        const tCtx = temp.getContext('2d')!;
-        tCtx.drawImage(this.redstoneDotTexture!, 0, 0);
-
-        this.tintImage(tCtx, r, g, b);
-        ctx.drawImage(temp, 0, 0);
-        //console.log(`[Redstone]   Center dot: ${count} pixels`);
-        return true;
-    }
-
-    /** Render redstone texture to canvas */
-    private renderRedstoneTexture(ctx: CanvasRenderingContext2D, connections: number,
-        connectionCount: number, r: number, g: number, b: number): void {
-        // For standalone redstone (0 connections), draw all 4 directions to form a cross
-        const isStandalone = (connectionCount === 0);
-        if (connectionCount === 1) {
-            if ((connections === 1) || (connections === 4)) {
-                this.drawLineSegment(ctx, 'east', r, g, b);
-                this.drawLineSegment(ctx, 'west', r, g, b);
-            }
-            if ((connections === 2) || (connections === 8)) {
-                this.drawLineSegment(ctx, 'south', r, g, b);
-                this.drawLineSegment(ctx, 'north', r, g, b);
-            }
-        } else {
-            // Draw line segments for each connection direction
-            if ((connections & 1) === 1 || isStandalone) this.drawLineSegment(ctx, 'east', r, g, b);
-            if ((connections & 2) === 2 || isStandalone) this.drawLineSegment(ctx, 'south', r, g, b);
-            if ((connections & 4) === 4 || isStandalone) this.drawLineSegment(ctx, 'west', r, g, b);
-            if ((connections & 8) === 8 || isStandalone) this.drawLineSegment(ctx, 'north', r, g, b);
-        }
-        // Determine if center dot should be drawn:
-        // - 0 connections (standalone): YES (cross shape with center dot)
-        // - 1 connection: NO (single line only)
-        // - 2 connections: YES if NOT a straight line (i.e., corner connection)
-        // - 3+ connections: YES
-        // Straight lines: East+West (5) or North+South (10) should NOT have center dot
-        const isStraightEW = (connections === 5); // East (1) + West (4) = 5
-        const isStraightNS = (connections === 10); // North (8) + South (2) = 10
-        const isStraightLine = isStraightEW || isStraightNS;
-
-        const shouldDrawDot = isStandalone ||
-            (connectionCount === 2 && !isStraightLine) ||
-            connectionCount >= 3;
-
-        if (shouldDrawDot) {
-            this.drawCenterDot(ctx, r, g, b);
-        }
-    }
-
-    /** Get redstone texture based on connections and power level */
-    private getRedstoneTexture(connections: number, power: number): THREE.CanvasTexture {
-        const cacheKey = `${connections}-${power}`;
-        if (this.redstoneTextureCache.has(cacheKey)) {
-            return this.redstoneTextureCache.get(cacheKey)!;
-        }
-
-        const powerColor = this.getRedstoneColor(power);
-        const r = Math.floor(powerColor.r * 255);
-        const g = Math.floor(powerColor.g * 255);
-        const b = Math.floor(powerColor.b * 255);
-
-        const connectionCount =
-            ((connections & 1) >> 0) +
-            ((connections & 2) >> 1) +
-            ((connections & 4) >> 2) +
-            ((connections & 8) >> 3);
-
-        // Create canvas
-        const canvas = document.createElement('canvas');
-        canvas.width = 16;
-        canvas.height = 16;
-        const ctx = canvas.getContext('2d')!;
-
-        const texturesReady = this.redstoneLineTexture &&
-            this.redstoneLineTexture.complete &&
-            this.redstoneLineTexture.naturalWidth > 0;
-
-        if (texturesReady) {
-            //console.log(`[Redstone] Drawing connections=${connections} (${connections.toString(2).padStart(4, '0')}), power=${power}`);
-            this.renderRedstoneTexture(ctx, connections, connectionCount, r, g, b);
-        } else {
-            // Fallback
-            console.warn('[Redstone] Textures not loaded, using fallback');
-            ctx.fillStyle = `rgb(${r}, ${g}, ${b})`;
-            ctx.fillRect(0, 0, 16, 16);
-        }
-
-        const texture = new THREE.CanvasTexture(canvas);
-        texture.anisotropy = this.renderer.capabilities.getMaxAnisotropy();
-        texture.minFilter = THREE.NearestFilter;
-        texture.magFilter = THREE.NearestFilter;
-
-        this.redstoneTextureCache.set(cacheKey, texture);
-        return texture;
-    }
-
-    /** Calculate color based on power level */
-    private getRedstoneColor(power: number): THREE.Color {
-        // power: 0-15
-        const colors = [
-            0x4C0000, 0x700000, 0x7A0000, 0x840000, 0x8E0000, 0x990000,
-            0xA30000, 0xAD0000, 0xB70000, 0xC10000, 0xCC0000, 0xD60000,
-            0xE00000, 0xEA0600, 0xF41B00, 0xFF3200
-        ];
-        return new THREE.Color(colors[power]);
     }
 
     /** Update instance matrices for all blocks */
@@ -406,77 +217,200 @@ export class SceneManager {
             mesh.count = 0;
         }
 
-        // Initialize shared geometry for redstone
-        if (!this.redstoneGeometry) {
-            this.redstoneGeometry = new THREE.PlaneGeometry(BLOCK_SIZE, BLOCK_SIZE);
-        }
-
-        // Track current redstone keys to detect deletions
+        // Track current keys to detect deletions
         const currentRedstoneKeys = new Set<string>();
+        const currentTorchKeys = new Set<string>();
 
-        // Re-populate instances
         for (const [key, blockId] of blocks) {
             const [x, y, z] = key.split(',').map(Number);
 
-            // Handle redstone dust with incremental updates
+            // Handle redstone dust (type 2)
             if (blockId === 2) {
                 currentRedstoneKeys.add(key);
                 const connections = redstoneConnections?.get(key) ?? 0;
                 const power = redstonePowers.get(key) ?? 0;
-
                 const prevState = this.redstoneStates.get(key);
 
                 if (!prevState) {
-                    // New redstone block: create mesh
-                    this.createRedstoneMesh(key, connections, power, x, y, z);
+                    const texture = this.redstoneRenderer.getTexture(connections, power, this.renderer);
+                    const geometry = new THREE.PlaneGeometry(1, 1);
+                    const material = new THREE.MeshStandardMaterial({
+                        map: texture,
+                        transparent: true,
+                        alphaTest: 0.1,
+                        roughness: 0.5,
+                        metalness: 0.0,
+                    });
+                    const mesh = new THREE.Mesh(geometry, material);
+                    mesh.position.set(x, y - 0.5 + 0.01, z);
+                    mesh.rotation.x = -Math.PI / 2;
+                    this.redstoneMeshes.add(mesh);
+                    this.redstoneStates.set(key, { connections, power, mesh });
                 } else {
-                    // Existing block: check if state changed
                     const changed = prevState.connections !== connections || prevState.power !== power;
-                    const positionChanged = prevState.mesh.position.x !== x ||
-                        prevState.mesh.position.y !== (y - BLOCK_SIZE / 2 + 0.01) ||
-                        prevState.mesh.position.z !== z;
-
                     if (changed) {
-                        // Update texture
-                        const newTexture = this.getRedstoneTexture(connections, power);
+                        const newTexture = this.redstoneRenderer.getTexture(connections, power, this.renderer);
                         const mat = prevState.mesh.material as THREE.MeshStandardMaterial;
                         if (mat.map !== newTexture) {
                             mat.map = newTexture;
                             mat.needsUpdate = true;
                         }
-                        // Update tracked state
                         prevState.connections = connections;
                         prevState.power = power;
-                    }
-
-                    if (positionChanged) {
-                        // Update position
-                        prevState.mesh.position.set(x, y - BLOCK_SIZE / 2 + 0.01, z);
                     }
                 }
                 continue;
             }
 
+            // Handle redstone torch (type 3)
+            if (blockId === 3) {
+                currentTorchKeys.add(key);
+                const connections = redstoneConnections?.get(key) ?? 0;
+                const signal = redstonePowers.get(key) ?? 15;
+                const prevState = this.torchStates.get(key);
+
+                if (!prevState) {
+                    const isWall = connections !== 0;
+                    const geometry = this.torchRenderer.buildGeometry(isWall);
+                    const texture = this.torchRenderer.getTexture(signal);
+                    const material = new THREE.MeshStandardMaterial({
+                        map: texture,
+                        alphaTest: 0.1,
+                        roughness: 0.7,
+                        metalness: 0.1,
+                        side: THREE.DoubleSide,// DoubleSide for both front and back faces
+                        polygonOffset: true,
+                        polygonOffsetFactor: 1,
+                        polygonOffsetUnits: 1,
+                    });
+                    const group = new THREE.Group();
+                    
+                    // Add collision box for raycasting (2x2x10 pixels = 0.125x0.625x0.125 MC units)
+                    const collisionGeometry = new THREE.BoxGeometry(2/16, 10/16, 2/16);
+                    const collisionMaterial = new THREE.MeshBasicMaterial({ 
+                        transparent: true, 
+                        opacity: 0,
+                        depthWrite: false,
+                        polygonOffset: true,
+                        polygonOffsetFactor: -2,
+                        polygonOffsetUnits: -2
+                    });
+                    const collisionMesh = new THREE.Mesh(collisionGeometry, collisionMaterial);
+                    collisionMesh.position.y = 5/16; // Center at Y=5px (covers Y=0 to Y=10px from ground)
+                    group.add(collisionMesh);
+                    
+                    const mesh = new THREE.Mesh(geometry, material);
+                    group.add(mesh);
+                    if (isWall) {
+                        switch (connections) {
+                            case 0b0001: group.rotation.y = 0; break;
+                            case 0b0010: group.rotation.y = Math.PI / 2; break;
+                            case 0b0100: group.rotation.y = Math.PI; break;
+                            case 0b1000: group.rotation.y = -Math.PI / 2; break;
+                        }
+                    }
+                    group.position.set(x, y, z);
+                    this.torchMeshes.add(group);
+                    this.torchStates.set(key, { connections, signal, meshes: [group] });
+                } else {
+                    const changed = prevState.connections !== connections || prevState.signal !== signal;
+                    if (changed) {
+                        for (const mesh of prevState.meshes) {
+                            this.torchMeshes.remove(mesh);
+                            mesh.traverse((child: THREE.Object3D) => {
+                                if (child instanceof THREE.Mesh) {
+                                    (child.material as THREE.Material).dispose();
+                                }
+                            });
+                        }
+                        const isWall = connections !== 0;
+                        const geometry = this.torchRenderer.buildGeometry(isWall);
+                        const texture = this.torchRenderer.getTexture(signal);
+                        const material = new THREE.MeshStandardMaterial({
+                            map: texture,
+                            alphaTest: 0.1,
+                            roughness: 0.7,
+                            metalness: 0.1,
+                            side: THREE.DoubleSide,
+                            polygonOffset: true,
+                            polygonOffsetFactor: 1,
+                            polygonOffsetUnits: 1,
+                        });
+                        const group = new THREE.Group();
+                        
+                        // Add collision box for raycasting (2x2x10 pixels = 0.125x0.625x0.125 MC units)
+                        const collisionGeometry = new THREE.BoxGeometry(2/16, 10/16, 2/16);
+                        const collisionMaterial = new THREE.MeshBasicMaterial({ 
+                            transparent: true, 
+                            opacity: 0,
+                            depthWrite: false,
+                            polygonOffset: true,
+                            polygonOffsetFactor: -2,
+                            polygonOffsetUnits: -2
+                        });
+                        const collisionMesh = new THREE.Mesh(collisionGeometry, collisionMaterial);
+                        collisionMesh.position.y = 5/16; // Center at Y=5px (covers Y=0 to Y=10px from ground)
+                        group.add(collisionMesh);
+                        
+                        const mesh = new THREE.Mesh(geometry, material);
+                        group.add(mesh);
+                        if (isWall) {
+                            switch (connections) {
+                                case 0b0001: group.rotation.y = 0; break;
+                                case 0b0010: group.rotation.y = Math.PI / 2; break;
+                                case 0b0100: group.rotation.y = Math.PI; break;
+                                case 0b1000: group.rotation.y = -Math.PI / 2; break;
+                            }
+                        }
+                        group.position.set(x, y, z);
+                        this.torchMeshes.add(group);
+                        this.torchStates.set(key, { connections, signal, meshes: [group] });
+                    }
+                }
+                continue;
+            }
+
+            // Standard blocks
             const mesh = this.meshes.get(blockId);
             if (!mesh) continue;
 
             const idx = mesh.count;
-
             this.dummy.position.set(x, y, z);
             this.dummy.updateMatrix();
             this.tempMatrix.copy(this.dummy.matrix);
             mesh.setMatrixAt(idx, this.tempMatrix);
-
             mesh.count = idx + 1;
         }
 
         // Remove deleted redstone blocks
-        for (const [key, state] of this.redstoneStates) {
+        for (const [key] of this.redstoneStates) {
             if (!currentRedstoneKeys.has(key)) {
-                this.redstoneMeshes.remove(state.mesh);
-                // Note: do NOT dispose geometry since it's shared
-                (state.mesh.material as THREE.Material).dispose();
-                this.redstoneStates.delete(key);
+                const state = this.redstoneStates.get(key);
+                if (state) {
+                    this.redstoneMeshes.remove(state.mesh);
+                    (state.mesh.material as THREE.Material).dispose();
+                    (state.mesh.geometry as THREE.BufferGeometry).dispose();
+                    this.redstoneStates.delete(key);
+                }
+            }
+        }
+
+        // Remove deleted torch blocks
+        for (const [key] of this.torchStates) {
+            if (!currentTorchKeys.has(key)) {
+                const state = this.torchStates.get(key);
+                if (state) {
+                    for (const mesh of state.meshes) {
+                        this.torchMeshes.remove(mesh);
+                        mesh.traverse((child: THREE.Object3D) => {
+                            if (child instanceof THREE.Mesh) {
+                                (child.material as THREE.Material).dispose();
+                                (child.geometry as THREE.BufferGeometry).dispose();
+                            }
+                        });
+                    }
+                    this.torchStates.delete(key);
+                }
             }
         }
 
@@ -491,32 +425,11 @@ export class SceneManager {
         }
     }
 
-
-    /** Create a redstone mesh and add to tracked state */
-    private createRedstoneMesh(key: string, connections: number, power: number,
-        x: number, y: number, z: number): void {
-        const texture = this.getRedstoneTexture(connections, power);
-        const material = new THREE.MeshStandardMaterial({
-            map: texture,
-            transparent: true,
-            alphaTest: 0.1,
-            side: THREE.DoubleSide,
-            roughness: 0.5,
-            metalness: 0.0,
-        });
-
-        const mesh = new THREE.Mesh(this.redstoneGeometry!, material);
-        mesh.position.set(x, y - BLOCK_SIZE / 2 + 0.01, z);
-        mesh.rotation.x = -Math.PI / 2;
-
-        this.redstoneMeshes.add(mesh);
-        this.redstoneStates.set(key, { connections, power, mesh });
-    }
-
     /** Get block coordinates at mouse position */
     getBlockAtPointer(clientX: number, clientY: number): {
         hitBlock: { x: number; y: number; z: number; blockId: number };  // The clicked block
         placeBlock: { x: number; y: number; z: number; blockId: number };  // Adjacent placement position
+        normal?: THREE.Vector3;  // Hit face normal for determining torch orientation
     } | null {
         const rect = this.renderer.domElement.getBoundingClientRect();
         this.pointer.x = ((clientX - rect.left) / rect.width) * 2 - 1;
@@ -537,6 +450,11 @@ export class SceneManager {
             if (child instanceof THREE.Mesh) allObjects.push(child);
         });
 
+        // Add torch meshes
+        this.torchMeshes.traverse((child) => {
+            if (child instanceof THREE.Mesh) allObjects.push(child);
+        });
+
         // Detect all objects and sort by distance
         let intersects = this.raycaster.intersectObjects(allObjects, true);
         intersects.sort((a, b) => a.distance - b.distance);
@@ -545,11 +463,33 @@ export class SceneManager {
 
         const hit = intersects[0];
 
-        // Handle redstone mesh hit
+        // Check if hit is a torch collision box
         if (hit.object instanceof THREE.Mesh && !(hit.object instanceof THREE.InstancedMesh)) {
             const mesh = hit.object as THREE.Mesh;
+            
+            // Check if this mesh is a torch collision box by looking up in torchStates
+            for (const [key, state] of this.torchStates) {
+                for (const group of state.meshes) {
+                    // Check if the hit mesh is a child of this torch group
+                    let found = false;
+                    group.traverse((child: THREE.Object3D) => {
+                        if (child === mesh) found = true;
+                    });
+                    
+                    if (found) {
+                        // Extract coordinates from the key
+                        const [x, y, z] = key.split(',').map(Number);
+                        return {
+                            hitBlock: { x, y, z, blockId: 3 },
+                            placeBlock: { x, y: y + 1, z, blockId: 0 },
+                            normal: new THREE.Vector3(0, 1, 0),
+                        };
+                    }
+                }
+            }
+            
+            // If not a torch collision box, check if it's a redstone mesh
             const pos = mesh.position;
-            // pos.y = y - 0.49, so pos.y + 0.5 ≈ y + 0.01, floor gives y
             const hitY = Math.floor(pos.y + BLOCK_SIZE / 2);
             const hitX = Math.floor(pos.x);
             const hitZ = Math.floor(pos.z);
@@ -563,6 +503,7 @@ export class SceneManager {
             return {
                 hitBlock: { x: hitX, y: hitY, z: hitZ, blockId: hitBlockId },
                 placeBlock: { x: hitX, y: hitY + 1, z: hitZ, blockId: placeBlockId },
+                normal: new THREE.Vector3(0, 1, 0),
             };
         }
 
@@ -618,6 +559,7 @@ export class SceneManager {
         return {
             hitBlock: { x: hitX, y: hitY, z: hitZ, blockId: hitBlockId },
             placeBlock: { x: placeX, y: placeY, z: placeZ, blockId: placeBlockId },
+            normal: normal.clone(),
         };
     }
 

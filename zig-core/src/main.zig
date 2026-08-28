@@ -1,5 +1,6 @@
 const std = @import("std");
 const redstone_wire = @import("components/redstone_wire.zig");
+const redstone_torch = @import("components/redstone_torch.zig");
 
 // ================== Basic Type Definitions ==================
 pub const Coord = struct { x: i32, y: i32, z: i32 };
@@ -109,7 +110,8 @@ pub fn isConnectableBlock(block_type: u8) bool {
 pub fn canProvideSignal(nb: BlockState) bool {
     switch (nb.type) {
         2 => return nb.signal > 0, // Redstone Dust
-        3, 7 => return true,       // Redstone Torch & Redstone Block
+        3 => return nb.signal > 0, // Redstone Torch (only lit torches)
+        7 => return true, // Redstone Block
         4, 5 => return nb.signal > 0, // Repeater & Comparator
         else => return false,
     }
@@ -202,11 +204,11 @@ export fn setBlockSignal(x: i32, y: i32, z: i32, signal: u8) void {
         addTask(x, y, z); // Signal change triggers update
     }
 }
-export fn placeBlock(x: i32, y: i32, z: i32, blockId: u8) void {
+export fn placeBlock(x: i32, y: i32, z: i32, blockId: u8, connections: u8) void {
     var value = BlockState{
         .type = blockId,
         .signal = 0,
-        .connections = 0,
+        .connections = @as(u4, @intCast(connections)),
         .powered = 0, // .none = 0
         .delay = 0,
         ._reserved = 0,
@@ -214,12 +216,25 @@ export fn placeBlock(x: i32, y: i32, z: i32, blockId: u8) void {
     if (blockId == 7) {
         value.signal = 15;
     }
+    if (blockId == 3) {
+        value.signal = 15; // Lit torch
+    }
     world_blocks.put(
         .{ .x = x, .y = y, .z = z },
         value,
     ) catch unreachable;
 
-    addTask(x, y, z);
+    //addTask(x, y, z);
+
+    if (blockId == 3) {
+        addDelayedTask(x, y, z, 1); // Delayed update for torch
+        for (RedstoneConnections) |dCoord| {
+            updateConnections(x + dCoord.x, y + dCoord.y, z + dCoord.z);
+        }
+
+        return;
+    }
+
     //FIXME: Here has confliction with tick() logic
     if (blockId == 2) {
         updateConnections(x, y, z);
@@ -228,11 +243,11 @@ export fn placeBlock(x: i32, y: i32, z: i32, blockId: u8) void {
         for (RedstoneConnections) |dCoord| {
             updateConnections(x + dCoord.x, y + dCoord.y, z + dCoord.z);
         }
-    }
 
-    // Trigger second-order redstone signal update
-    // (Find redstone dust that is 2 blocks away from the placed block)
-    updateSecondOrderRedstone(x, y, z);
+        // Trigger second-order redstone signal update
+        // (Find redstone dust that is 2 blocks away from the placed block)
+        updateSecondOrderRedstone(x, y, z);
+    }
 }
 export fn removeBlock(x: i32, y: i32, z: i32) void {
     _ = world_blocks.remove(.{ .x = x, .y = y, .z = z });
@@ -264,7 +279,7 @@ export fn tick() void {
         }
     }
 
-    // Process redstone wire updates
+    // Process redstone wire and torch updates
     var iteration_count: u32 = 0;
     const MAX_ITERATIONS = 1000;
 
@@ -276,6 +291,10 @@ export fn tick() void {
 
         if (block.type == 2) {
             redstone_wire.update(coord.x, coord.y, coord.z);
+        } else if (block.type == 3) {
+            // Redstone torch update (placeholder for periodic checks)
+            // Primary updates occur at placement time
+            redstone_torch.update(coord.x, coord.y, coord.z);
         }
     }
 }

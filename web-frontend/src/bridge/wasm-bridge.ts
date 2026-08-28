@@ -3,7 +3,7 @@
 
 export interface WasmExports {
   initWorld: (width: number, height: number, depth: number) => void;
-  placeBlock: (x: number, y: number, z: number, blockId: number) => void;
+  placeBlock: (x: number, y: number, z: number, blockId: number, connections?: number) => void;
   removeBlock: (x: number, y: number, z: number) => void;
   tick: () => void;
   getBlockState: (x: number, y: number, z: number) => number;

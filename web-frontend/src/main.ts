@@ -260,11 +260,43 @@ async function main() {
                 if (pointerButton === 2) {
                     // Right-click place
                     const { x, y, z } = result.placeBlock;
+                    
+                    // Check placement validity
                     if (toTypeId(wasm.getBlockState(x, y - 1, z)) !== 1 && currentBlockId !== 1 && 
                         toTypeId(wasm.getBlockState(x, y - 1, z)) !== 7 && currentBlockId !== 7) break;
-                    wasm.placeBlock(x, y, z, currentBlockId);
+                    
+                    // Calculate connections for torch placement
+                    let connections = 0;
+                    if (currentBlockId === 3 && result.normal) {
+                        // Determine torch orientation based on hit face normal
+                        const nx = result.normal.x;
+                        const ny = result.normal.y;
+                        const nz = result.normal.z;
+                        
+                        if (ny > 0.5) {
+                            // Top face - vertical torch
+                            connections = 0b0000;
+                        } else if (nz < -0.5) {
+                            // North face
+                            connections = 0b0001;
+                        } else if (nx < -0.5) {
+                            // West face
+                            connections = 0b0010;
+                        } else if (nz > 0.5) {
+                            // South face
+                            connections = 0b0100;
+                        } else if (nx > 0.5) {
+                            // East face
+                            connections = 0b1000;
+                        }
+                    }
+                    
+                    wasm.placeBlock(x, y, z, currentBlockId, connections);
                     localBlockData.set(`${x},${y},${z}`, currentBlockId);
-                    redstonePowers.set(`${x},${y},${z}`, 0);
+                    redstonePowers.set(`${x},${y},${z}`, currentBlockId === 3 ? 15 : 0);
+                    if (currentBlockId === 3) {
+                        wasm.setBlockSignal(x, y, z, 15);
+                    }
                     syncWorldToScene();
                 } else if (pointerButton === 0) {
                     // Left-click delete
@@ -352,7 +384,7 @@ async function main() {
     redstonePowers.set('1,0,0', 15);
     wasm.setBlockSignal(1, 0, 0, 15);
 
-    wasm.placeBlock(0, 0, 1, 3);
+    wasm.placeBlock(0, 0, 1, 3,0b0000);
     localBlockData.set('0,0,1', 3);
 
     // Initialize connections for test redstone dust
