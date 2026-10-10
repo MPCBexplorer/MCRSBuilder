@@ -215,7 +215,17 @@ export class SceneManager {
         for (const blockType of BLOCK_TYPES) {
             if (blockType.id === 0 || blockType.id === 2) continue; // Skip air and redstone dust
 
-            const geometry = new THREE.BoxGeometry(BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE);
+            // Every block type previously got the same full-size BoxGeometry, which an
+            // InstancedMesh also uses as its raycasting collision volume. For the upright
+            // Redstone Torch (id 3) that made its hitbox a full 16x16x16 MC-pixel block
+            // instead of its real, much thinner shape (see MPCBexplorer/MCRSBuilder#5).
+            // In actual Minecraft an upright torch's hitbox/model is 2x2x10 MC pixels
+            // (width x depth x height, out of 16), standing centered on the block below
+            // rather than filling the whole cell, so give it a dedicated geometry sized
+            // and positioned to match instead of the generic full-block one.
+            const geometry = blockType.id === 3
+                ? SceneManager.createRedstoneTorchGeometry()
+                : new THREE.BoxGeometry(BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE);
             const material = new THREE.MeshStandardMaterial({
                 color: blockType.color,
                 roughness: 0.7,
@@ -228,6 +238,26 @@ export class SceneManager {
             this.scene.add(mesh);
             this.meshes.set(blockType.id, mesh);
         }
+    }
+
+    /**
+     * Build the Redstone Torch's collision/visual geometry: 2x2x10 MC pixels
+     * (out of 16 per block), standing upright and resting on the bottom of its
+     * cell rather than filling the whole cell, matching Minecraft's actual
+     * upright-torch hitbox. (AI-assisted: see MPCBexplorer/MCRSBuilder#5.)
+     */
+    private static createRedstoneTorchGeometry(): THREE.BoxGeometry {
+        const torchWidth = (2 / 16) * BLOCK_SIZE;
+        const torchDepth = (2 / 16) * BLOCK_SIZE;
+        const torchHeight = (10 / 16) * BLOCK_SIZE;
+
+        const geometry = new THREE.BoxGeometry(torchWidth, torchHeight, torchDepth);
+        // BoxGeometry is centered on the origin by default; shift it up so its
+        // bottom face sits on the bottom face of the full block cell instead of
+        // floating at the cell's vertical center.
+        geometry.translate(0, -(BLOCK_SIZE - torchHeight) / 2, 0);
+
+        return geometry;
     }
 
     /** Tint an image: color all non-transparent pixels */
