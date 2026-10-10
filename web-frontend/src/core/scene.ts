@@ -189,9 +189,19 @@ export class SceneManager {
     private initMeshes() {
         const maxCount = 10000;
         for (const blockType of BLOCK_TYPES) {
-            if (blockType.id === 0 || blockType.id === 2 || blockType.id === 3) continue;
+            if (blockType.id === 0 || blockType.id === 2) continue; // Skip air and redstone dust
 
-            const geometry = new THREE.BoxGeometry(BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE);
+            // Every block type previously got the same full-size BoxGeometry, which an
+            // InstancedMesh also uses as its raycasting collision volume. For the upright
+            // Redstone Torch (id 3) that made its hitbox a full 16x16x16 MC-pixel block
+            // instead of its real, much thinner shape (see MPCBexplorer/MCRSBuilder#5).
+            // In actual Minecraft an upright torch's hitbox/model is 2x2x10 MC pixels
+            // (width x depth x height, out of 16), standing centered on the block below
+            // rather than filling the whole cell, so give it a dedicated geometry sized
+            // and positioned to match instead of the generic full-block one.
+            const geometry = blockType.id === 3
+                ? SceneManager.createRedstoneTorchGeometry()
+                : new THREE.BoxGeometry(BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE);
             const material = new THREE.MeshStandardMaterial({
                 color: blockType.color,
                 roughness: 0.7,
@@ -205,6 +215,192 @@ export class SceneManager {
             this.scene.add(mesh);
             this.meshes.set(blockType.id, mesh);
         }
+    }
+
+    /**
+     * Build the Redstone Torch's collision/visual geometry: 2x2x10 MC pixels
+     * (out of 16 per block), standing upright and resting on the bottom of its
+     * cell rather than filling the whole cell, matching Minecraft's actual
+     * upright-torch hitbox. (AI-assisted: see MPCBexplorer/MCRSBuilder#5.)
+     */
+    private static createRedstoneTorchGeometry(): THREE.BoxGeometry {
+        const torchWidth = (2 / 16) * BLOCK_SIZE;
+        const torchDepth = (2 / 16) * BLOCK_SIZE;
+        const torchHeight = (10 / 16) * BLOCK_SIZE;
+
+        const geometry = new THREE.BoxGeometry(torchWidth, torchHeight, torchDepth);
+        // BoxGeometry is centered on the origin by default; shift it up so its
+        // bottom face sits on the bottom face of the full block cell instead of
+        // floating at the cell's vertical center.
+        geometry.translate(0, -(BLOCK_SIZE - torchHeight) / 2, 0);
+
+        return geometry;
+    }
+
+    /** Tint an image: color all non-transparent pixels */
+    private tintImage(ctx: CanvasRenderingContext2D, r: number, g: number, b: number): number {
+        const imgData = ctx.getImageData(0, 0, 16, 16);
+        const d = imgData.data;
+        let count = 0;
+        for (let i = 0; i < d.length; i += 4) {
+            if (d[i + 3] > 0) {
+                d[i] = r;
+                d[i + 1] = g;
+                d[i + 2] = b;
+                count++;
+            }
+        }
+        ctx.putImageData(imgData, 0, 0);
+        return count;
+    }
+
+    /** Draw a line segment for a specific direction */
+    private drawLineSegment(ctx: CanvasRenderingContext2D, direction: 'east' | 'south' | 'west' | 'north',
+        r: number, g: number, b: number): void {
+        const temp = document.createElement('canvas');
+        temp.width = 16;
+        temp.height = 16;
+        const tCtx = temp.getContext('2d')!;
+
+        let rotation = 0;
+        if (direction === 'east' || direction === 'west') { rotation = -Math.PI / 2; }  // Counter-clockwise 90°
+
+        // Rotate around center of canvas
+        tCtx.translate(8, 8);
+        tCtx.rotate(rotation);
+        tCtx.translate(-8, -8);
+        // Draw the full texture first
+        tCtx.drawImage(this.redstoneLineTexture!, 0, 0);
+
+
+        // Now clip to keep only half (from center to edge)
+        // Notice: according to the rotated axis
+        if ((direction === 'east') || (direction === 'south')) {
+            tCtx.clearRect(0, 0, 16, 8);
+        } else if ((direction === 'west') || (direction === 'north')) {
+            tCtx.clearRect(0, 8, 16, 8);
+        }
+        // Tint: color all non-transparent pixels
+        this.tintImage(tCtx, r, g, b);
+        ctx.drawImage(temp, 0, 0);
+    }
+
+    /** Draw center dot */
+    private drawCenterDot(ctx: CanvasRenderingContext2D, r: number, g: number, b: number): boolean {
+        if (!this.redstoneDotTexture ||
+            !this.redstoneDotTexture.complete ||
+            this.redstoneDotTexture.naturalWidth === 0) {
+            return false;
+        }
+
+        const temp = document.createElement('canvas');
+        temp.width = 16;
+        temp.height = 16;
+        const tCtx = temp.getContext('2d')!;
+        tCtx.drawImage(this.redstoneDotTexture!, 0, 0);
+
+        this.tintImage(tCtx, r, g, b);
+        ctx.drawImage(temp, 0, 0);
+        //console.log(`[Redstone]   Center dot: ${count} pixels`);
+        return true;
+    }
+
+    /** Render redstone texture to canvas */
+    private renderRedstoneTexture(ctx: CanvasRenderingContext2D, connections: number,
+        connectionCount: number, r: number, g: number, b: number): void {
+        // For standalone redstone (0 connections), draw all 4 directions to form a cross
+        const isStandalone = (connectionCount === 0);
+        if (connectionCount === 1) {
+            if ((connections === 1) || (connections === 4)) {
+                this.drawLineSegment(ctx, 'east', r, g, b);
+                this.drawLineSegment(ctx, 'west', r, g, b);
+            }
+            if ((connections === 2) || (connections === 8)) {
+                this.drawLineSegment(ctx, 'south', r, g, b);
+                this.drawLineSegment(ctx, 'north', r, g, b);
+            }
+        } else {
+            // Draw line segments for each connection direction
+            if ((connections & 1) === 1 || isStandalone) this.drawLineSegment(ctx, 'east', r, g, b);
+            if ((connections & 2) === 2 || isStandalone) this.drawLineSegment(ctx, 'south', r, g, b);
+            if ((connections & 4) === 4 || isStandalone) this.drawLineSegment(ctx, 'west', r, g, b);
+            if ((connections & 8) === 8 || isStandalone) this.drawLineSegment(ctx, 'north', r, g, b);
+        }
+        // Determine if center dot should be drawn:
+        // - 0 connections (standalone): YES (cross shape with center dot)
+        // - 1 connection: NO (single line only)
+        // - 2 connections: YES if NOT a straight line (i.e., corner connection)
+        // - 3+ connections: YES
+        // Straight lines: East+West (5) or North+South (10) should NOT have center dot
+        const isStraightEW = (connections === 5); // East (1) + West (4) = 5
+        const isStraightNS = (connections === 10); // North (8) + South (2) = 10
+        const isStraightLine = isStraightEW || isStraightNS;
+
+        const shouldDrawDot = isStandalone ||
+            (connectionCount === 2 && !isStraightLine) ||
+            connectionCount >= 3;
+
+        if (shouldDrawDot) {
+            this.drawCenterDot(ctx, r, g, b);
+        }
+    }
+
+    /** Get redstone texture based on connections and power level */
+    private getRedstoneTexture(connections: number, power: number): THREE.CanvasTexture {
+        const cacheKey = `${connections}-${power}`;
+        if (this.redstoneTextureCache.has(cacheKey)) {
+            return this.redstoneTextureCache.get(cacheKey)!;
+        }
+
+        const powerColor = this.getRedstoneColor(power);
+        const r = Math.floor(powerColor.r * 255);
+        const g = Math.floor(powerColor.g * 255);
+        const b = Math.floor(powerColor.b * 255);
+
+        const connectionCount =
+            ((connections & 1) >> 0) +
+            ((connections & 2) >> 1) +
+            ((connections & 4) >> 2) +
+            ((connections & 8) >> 3);
+
+        // Create canvas
+        const canvas = document.createElement('canvas');
+        canvas.width = 16;
+        canvas.height = 16;
+        const ctx = canvas.getContext('2d')!;
+
+        const texturesReady = this.redstoneLineTexture &&
+            this.redstoneLineTexture.complete &&
+            this.redstoneLineTexture.naturalWidth > 0;
+
+        if (texturesReady) {
+            //console.log(`[Redstone] Drawing connections=${connections} (${connections.toString(2).padStart(4, '0')}), power=${power}`);
+            this.renderRedstoneTexture(ctx, connections, connectionCount, r, g, b);
+        } else {
+            // Fallback
+            console.warn('[Redstone] Textures not loaded, using fallback');
+            ctx.fillStyle = `rgb(${r}, ${g}, ${b})`;
+            ctx.fillRect(0, 0, 16, 16);
+        }
+
+        const texture = new THREE.CanvasTexture(canvas);
+        texture.anisotropy = this.renderer.capabilities.getMaxAnisotropy();
+        texture.minFilter = THREE.NearestFilter;
+        texture.magFilter = THREE.NearestFilter;
+
+        this.redstoneTextureCache.set(cacheKey, texture);
+        return texture;
+    }
+
+    /** Calculate color based on power level */
+    private getRedstoneColor(power: number): THREE.Color {
+        // power: 0-15
+        const colors = [
+            0x4C0000, 0x700000, 0x7A0000, 0x840000, 0x8E0000, 0x990000,
+            0xA30000, 0xAD0000, 0xB70000, 0xC10000, 0xCC0000, 0xD60000,
+            0xE00000, 0xEA0600, 0xF41B00, 0xFF3200
+        ];
+        return new THREE.Color(colors[power]);
     }
 
     /** Update instance matrices for all blocks */
